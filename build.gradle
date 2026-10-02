@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+apply from: "$rootDir/gradle/versioning.gradle"
+apply from: "$rootDir/gradle/dependencies.gradle"
+apply from: "$rootDir/gradle/docker.gradle"
+dependencies {
+    implementation 'ch.so.agi:interlis-mcp-module:0.1.0-SNAPSHOT'
+    implementation 'ch.so.agi:netl-mcp-module:0.4.1-SNAPSHOT'
+    implementation 'org.springframework.ai:spring-ai-starter-mcp-server-webmvc'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+tasks.named('processResources') {
+    inputs.property('mcpServerVersion', version.toString())
+    filesMatching('application.properties') { expand(mcpServerVersion: project.version.toString()) }
+}
+bootJar { archiveFileName = 'mcp-suite.jar' }
+tasks.register('verifyDependencyAlignment') {
+    dependsOn configurations.runtimeClasspath
+    doLast {
+        def resolved = new TreeMap<String,String>()
+        configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.each {
+            resolved["${it.moduleVersion.id.group}:${it.name}".toString()] = it.moduleVersion.id.version
+        }
+        def manifests = []
+        configurations.runtimeClasspath.files.findAll { it.name.endsWith('.jar') }.each { artifact ->
+            def zip = new java.util.zip.ZipFile(artifact)
+            try {
+                zip.entries().findAll { it.name.startsWith('META-INF/mcp/') && it.name.endsWith('.json') }.each { entry ->
+                    manifests.add(new groovy.json.JsonSlurper().parse(zip.getInputStream(entry)))
+                }
+            } finally { zip.close() }
+        }
+        if (manifests.size() != 2) throw new GradleException('Expected both published MCP dependency manifests')
+        manifests.each { module ->
+            module.dependencies.each { coordinate, expected ->
+                if (resolved[coordinate] != expected) throw new GradleException("${module.artifact}: ${coordinate} expected ${expected}, resolved ${resolved[coordinate]}")
+            }
+        }
+        logger.lifecycle('Both module dependency manifests match the suite runtime.')
+    }
+}
+tasks.named('check') { dependsOn tasks.named('verifyDependencyAlignment') }
+
+// Preserve interactive STDIO when developing with bootRun.
+tasks.named('bootRun') { standardInput = System.in }

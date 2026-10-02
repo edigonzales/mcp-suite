@@ -1,0 +1,9 @@
+rootProject.name = 'mcp-suite'
+if (providers.gradleProperty('useLocalModules').map { it.toBoolean() }.getOrElse(false)) {
+    includeBuild('../interlis-mcp') {
+        dependencySubstitution { substitute module('ch.so.agi:interlis-mcp-module') using project(':interlis-mcp-module') }
+    }
+    includeBuild('../netl-mcp') {
+        dependencySubstitution { substitute module('ch.so.agi:netl-mcp-module') using project(':netl-mcp-module') }
+    }
+}

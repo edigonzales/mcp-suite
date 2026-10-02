@@ -1,0 +1,6 @@
+**
+!build/
+!build/libs/
+!build/libs/mcp-suite.jar
+!docker/
+!docker/Dockerfile
